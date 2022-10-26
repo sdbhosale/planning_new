@@ -331,8 +331,161 @@ int IsValidArmConfiguration(double* angles, int numofDOFs, double*	map,
 	return 1;
 }
 
+// compute l2 norm
+double l2norm(double* a, double* b, int n) {
+	double sum = 0;
+	for (int i = 0; i < n; ++i) {
+		sum += pow(a[i] - b[i], 2);
+	}
+	return sqrt(sum);
+}
+
+// create a random array of size n
+double* randomArray(int n) {
+	double* arr = new double[n];
+	for (int i = 0; i < n; ++i) {
+		arr[i] = 2.0*PI*((double)rand() / RAND_MAX);
+	}
+	return arr;
+}
+
+// create a struct of of two vectors of doubles
+struct vertex {
+	double* angles;
+	vertex* parent;
+}; 
+
+
+vertex* nearestAngle(vector<vertex*> tree, double* sample_q, int n) {
+	double minDist = 100000000;
+	vertex* nearest = NULL;
+	for (int i = 0; i < tree.size(); ++i) {
+		double dist = l2norm(tree[i]->angles, sample_q, n);
+		if (dist < minDist) {
+			minDist = dist;
+			nearest = tree[i];
+		}
+	}
+	return nearest;
+}
+
+
+vertex* extend(vector<vertex*> tree, double* sample_q, int numofDOFs, double* map, int x_size, int y_size, int steps, double stepsize) {
+	vertex* nearest_neighbor = nearestAngle(tree, sample_q, numofDOFs);
+	cout<<"nearest neighbor: ";
+	for (int i = 0; i < numofDOFs; ++i) {
+		cout<<nearest_neighbor->angles[i]<<" ";
+	}
+	cout<<endl;
+
+	double* new_q = new double[numofDOFs];
+
+	//allocated memory for new vertex
+	vertex* extended_vertex = new vertex;
+	extended_vertex->parent = nearest_neighbor;
+	extended_vertex->angles = new double[numofDOFs];
+
+	for (int i = 0; i < steps; ++i) {
+		for (int j =0; j< numofDOFs; ++j) {
+			new_q[j] = nearest_neighbor->angles[j] + i*stepsize * ((sample_q[j] - nearest_neighbor->angles[j])/abs(sample_q[j] - nearest_neighbor->angles[j]));
+		}
+		cout<<"new_q: ";
+		for (int j = 0; j < numofDOFs; ++j) {
+			cout<<new_q[j]<<" ";
+		}
+		cout<<endl;
+		if (!IsValidArmConfiguration(new_q, numofDOFs, map, x_size, y_size)) {
+			cout<<"invalid arm configuration"<<endl;
+			return extended_vertex;
+			}
+		for (int j = 0; j < numofDOFs; ++j) {
+			extended_vertex->angles[j] = new_q[j];
+		}
+	}
+
+	return extended_vertex;
+}
+
+pair<int,double**> backtrace(vertex* goal, int numofDOFs) {
+
+	//write a sample while loop
+	int path_len = 1;
+	vertex* current = goal;
+	while (current->parent != NULL) {
+		++path_len;
+		current = current->parent;
+	}
+
+	//allocate memory for the plan
+	double** plan = new double*[path_len];
+	for (int j = 0; j < path_len; ++j) {
+		plan[j] = new double[numofDOFs];
+	}
+
+	//write a second while loop
+	int k = path_len-1;
+	current = goal;
+	for (int i = k; i >= 0; i--) {
+		for (int j = 0; j < numofDOFs; ++j) {
+			plan[i][j] = current->angles[j];
+		}
+		current = current->parent;
+	}
+	return make_pair(path_len, plan);
+}
+
+void rrt(double* map,
+				int x_size,
+				int y_size,
+				double* armstart_anglesV_rad,
+				double* armgoal_anglesV_rad,
+				int numofDOFs,
+				double*** plan,
+				int* planlength,
+				int K){
+
+	vector<vertex*> tree;
+	vertex* start = new vertex;
+	start->angles = armstart_anglesV_rad;
+	start->parent = NULL;
+	tree.push_back(start);
+
+	for (int i = 0; i < K; ++i) {
+		cout<<"iteration "<<i<<endl;
+		vertex* extended = new vertex;
+		double* sample_q = randomArray(numofDOFs);
+		cout<<"Random sample: ";
+		for (int j = 0; j < numofDOFs; ++j) {
+			cout << sample_q[j] << " ";
+		}
+		cout << endl;
+		extended = extend(tree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.005);
+		cout<<"Extended vertex: ";
+		for (int j = 0; j < numofDOFs; ++j) {
+			cout << extended->angles[j] << " ";
+		}
+		cout << endl;
+
+		tree.push_back(extended);
+
+		if (l2norm(extended->angles, armgoal_anglesV_rad, numofDOFs) <1) {
+			cout<<"-------------------------found goal---------------------"<<endl;
+			vertex* goal = new vertex;
+			goal->angles = armgoal_anglesV_rad;
+			goal->parent = extended;
+			tree.push_back(goal);
+			// backtrack to get the path
+			pair <int, double**> path = backtrace(goal, numofDOFs);
+			*planlength = path.first;
+			*plan = path.second;
+			break;
+		}	
+	}
+}
+
+
 static void planner(
-			int whichplanner
+			int whichplanner,
 			double* map,
 			int x_size,
 			int y_size,
@@ -358,9 +511,15 @@ static void planner(
 			armgoal_anglesV_rad,
 			numofDOFs,
 			plan,
-			planlength);
+			planlength,50000);
 	}
-    
+	cout << "planlength: " << *planlength << endl;
+    for (int i = 0; i < *planlength; i++) {
+		for (int j = 0; j < numofDOFs; j++) {
+			printf("%f ", (*plan)[i][j]);
+		}
+		printf("\n");
+	}
     return;
 }
 
@@ -388,27 +547,15 @@ int main(int argc, char** argv) {
 	tie(map, x_size, y_size) = loadMap(argv[1]);
 
 	// print argc using cout
-	cout << "argc: " << argc << endl;
+	// cout << "argc: " << argc << endl;
 	// print argv using cout
-	cout << "argv: " << argv[0] << endl;
+	// cout << "argv: " << argv[0] << endl;
 
 	const int numOfDOFs = std::stoi(argv[2]);
 	double* startPos = doubleArrayFromString(argv[3]);
 	double* goalPos = doubleArrayFromString(argv[4]);
 	int whichPlanner = std::stoi(argv[5]);
 	string outputFile = argv[6];
-
-	// print startpos using cout
-	cout << "startPos " << startPos << endl;
-	// print goalPos using cout
-	cout << "goalPos " << goalPos<< endl;
-	//print whichPlanner using cout
-	cout << "whichPlanner: " << whichPlanner << endl;
-	//print numOfDOFs using cout
-	cout << "numOfDOFs: " << numOfDOFs << endl;
-	//print outputFile using cout
-	cout << "outputFile: " << outputFile << endl;
-
 
 	if(!IsValidArmConfiguration(startPos, numOfDOFs, map, x_size, y_size)||
 			!IsValidArmConfiguration(goalPos, numOfDOFs, map, x_size, y_size)) {
@@ -449,126 +596,5 @@ int main(int argc, char** argv) {
 			m_log_fstream << plan[i][k] << ",";
 		}
 		m_log_fstream << endl;
-	}
-}
-
-// compute l2 norm
-double l2norm(double* a, double* b, int n) {
-	double sum = 0;
-	for (int i = 0; i < n; ++i) {
-		sum += pow(a[i] - b[i], 2);
-	}
-	return sqrt(sum);
-}
-
-// create a random array of size n
-double* randomArray(int n) {
-	double* arr = new double[n];
-	for (int i = 0; i < n; ++i) {
-		arr[i] = (double)rand() / RAND_MAX;
-	}
-	return arr;
-}
-
-
-// create a struct of of two vectors of doubles
-struct vertex {
-	double* angles;
-	vertex* parent;
-}; 
-
-
-vertex* nearestAngle(vector<vertex*> tree, double* sample_q, int n) {
-	double minDist = 100000000;
-	vertex* nearest = NULL;
-	for (int i = 0; i < tree.size(); ++i) {
-		double dist = l2norm(tree[i]->angles, sample_q, n);
-		if (dist < minDist) {
-			minDist = dist;
-			nearest = tree[i];
-		}
-	}
-	return nearest;
-}
-
-
-vertex* extend(vector<vertex*> tree, double* sample_q, int numofDOFs, double* map, int x_size, int y_size, int steps, double stepsize) {
-	vertex* nearest_neighbor = nearestAngle(tree, sample_q, numofDOFs);
-	double* new_q = new double[numofDOFs];
-
-	//allocated memory for new vertex
-	vertex* extended_vertex = new vertex;
-	extended_vertex->parent = nearest_neighbor;
-
-	for (int i = 0; i < steps; ++i) {
-		for (int j =0; j< numofDOFs; ++j) {
-			new_q[j] = nearest_neighbor->angles[j] + stepsize * (sample_q[j] - nearest_neighbor->angles[j])/abs(sample_q[j] - nearest_neighbor->angles[j]);
-		}
-		if (!IsValidArmConfiguration(new_q, numofDOFs, map, x_size, y_size)) {
-			return extended_vertex;
-			}
-		extended_vertex->angles= new_q;
-		}
-	return extended_vertex;
-}
-
-pair<int,double**> backtrace(vertex* goal, int numofDOFs) {
-
-	//write a sample while loop
-	int path_len = 1;
-	vertex* current = goal;
-	while (current->parent != NULL) {
-		++path_len;
-		current = current->parent;
-	}
-
-	//allocate memory for the plan
-	double** plan = new double*[path_len];
-	for (int j = 0; j < path_len; ++j) {
-		plan[j] = new double[numofDOFs];
-	}
-
-	//write a second while loop
-	int k = path_len-1;
-	current = goal;
-	for (int i = k; i >= 0; i--) {
-		for (int j = 0; j < numofDOFs; ++j) {
-			plan[i][j] = current->angles[j];
-		}
-		current = current->parent;
-	}
-	return make_pair(path_len, plan);
-}
-
-static void rrt(double* map,
-				int x_size,
-				int y_size,
-				double* armstart_anglesV_rad,
-				double* armgoal_anglesV_rad,
-				int numofDOFs,
-				double*** plan,
-				int* planlength,
-				int K){
-	vector<vertex*> tree;
-	vertex* start = new vertex;
-	start->angles = armstart_anglesV_rad;
-	start->parent = NULL;
-	tree.push_back(start);
-
-	for (int i = 0; i < K; ++i) {
-		double* sample_q = randomArray(numofDOFs);
-		vertex* extended = extend(tree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.1);
-		tree.push_back(extended);
-		if (l2norm(extended->angles, armgoal_anglesV_rad, numofDOFs) < 0.1) {
-			vertex* goal = new vertex;
-			goal->angles = armgoal_anglesV_rad;
-			goal->parent = extended;
-			tree.push_back(goal);
-			// backtrack to get the path
-			pair <int, double**> path = backtrace(goal, numofDOFs);
-			*planlength = path.first;
-			*plan = path.second;
-			break;
-		}	
 	}
 }
