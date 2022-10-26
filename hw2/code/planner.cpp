@@ -459,7 +459,7 @@ void rrt(double* map,
 			cout << sample_q[j] << " ";
 		}
 		cout << endl;
-		extended = extend(tree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.005);
+		extended = extend(tree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.05);
 		cout<<"Extended vertex: ";
 		for (int j = 0; j < numofDOFs; ++j) {
 			cout << extended->angles[j] << " ";
@@ -481,6 +481,93 @@ void rrt(double* map,
 			break;
 		}	
 	}
+}
+
+pair<bool,vertex*> connect(vector<vertex*> tree, double* new_q, int n, double* map, int x_size, int y_size, int steps, double stepsize, double connect_thres) {
+	// define a new bool variable called connected
+	bool connected = false;
+	vertex* extended = extend(tree, new_q, n, map, x_size, y_size, steps, stepsize);
+	if (l2norm(new_q, extended->angles, n) > connect_thres) {
+		tree.push_back(extended);
+		connected = false;
+		return make_pair(connected,extended);
+	}
+	else {
+		tree.push_back(extended);
+		//print that the trees are connected
+		cout<<"-------------------------trees are connected---------------------"<<endl;
+		connected = true;
+		return make_pair(connected,extended);
+	}
+}
+
+
+static void rrtconnect(double* map,
+				int x_size,
+				int y_size,
+				double* armstart_anglesV_rad,
+				double* armgoal_anglesV_rad,
+				int numofDOFs,
+				double*** plan,
+				int* planlength,
+				int K,
+				int steps,
+				double stepsize){
+					//initialise two trees
+					vector<vertex*> startTree;
+					vector<vertex*> goalTree;
+					vertex* start = new vertex;
+					start->angles = armstart_anglesV_rad;
+					start->parent = NULL;
+					startTree.push_back(start);
+					vertex* goal = new vertex;
+					goal->angles = armgoal_anglesV_rad;
+					goal->parent = NULL;
+					goalTree.push_back(goal);
+
+					//start drawing samples in a loop
+					for (int i = 0; i < K; ++i) {
+						vertex* extended = new vertex;
+						double* sample_q = randomArray(numofDOFs);
+						if (i%2 == 0) {
+							extended = extend(startTree, sample_q, numofDOFs, map, x_size, y_size, steps, stepsize);
+							startTree.push_back(extended);
+							if (connect(goalTree, extended->angles, numofDOFs, map, x_size, y_size, steps, stepsize, 1)){
+
+								// backtrack to get the path
+								pair <int, double**> path = backtrace(extended, numofDOFs);
+								*planlength = path.first;
+								*plan = path.second;
+								break;
+							};
+							
+						}
+						else {
+							// cout<<"goal tree"<<endl;
+							extended = extend(goalTree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.05);
+							// cout<<"Extended vertex: ";
+							// for (int j = 0; j < numofDOFs; ++j) {
+							// 	cout << extended->angles[j] << " ";
+							// }
+							// cout << endl;
+							goalTree.push_back(extended);
+							//check if the extended vertex is in the start tree
+							for (int j = 0; j < startTree.size(); ++j) {
+								if (l2norm(extended->angles, startTree[j]->angles, numofDOFs) < 1) {
+									cout<<"-------------------------found goal---------------------"<<endl;
+									// backtrack to get the path
+									pair <int, double**> path = backtrace(extended, numofDOFs);
+									*planlength = path.first;
+									*plan = path.second;
+									break;
+								}
+							}
+						}
+						extended=extend(startTree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.05);
+						
+					}
+
+				
 }
 
 
@@ -598,3 +685,4 @@ int main(int argc, char** argv) {
 		m_log_fstream << endl;
 	}
 }
+
