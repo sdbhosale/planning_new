@@ -434,6 +434,26 @@ pair<int,double**> backtrace(vertex* goal, int numofDOFs) {
 	return make_pair(path_len, plan);
 }
 
+//get a path from connected trees
+double** connectpath(pair<int, double**>pathToStart,pair<int, double**>pathToGoal, int numofDOFs) {
+	int path_len = pathToStart.first + pathToGoal.first-2;
+	double** plan = new double*[path_len];
+	for (int j = 0; j < path_len; ++j) {
+		plan[j] = new double[numofDOFs];
+	}
+	for (int i = 0; i < pathToStart.first-1; ++i) {
+		for (int j = 0; j < numofDOFs; ++j) {
+			plan[i][j] = pathToStart.second[i][j];
+		}
+	}
+	for (int i = 0; i < pathToGoal.first-1; ++i) {
+		for (int j = 0; j < numofDOFs; ++j) {
+			plan[i+pathToStart.first][j] = pathToGoal.second[pathToGoal.first-1-i][j];
+		}
+	}
+	return plan;
+}
+
 void rrt(double* map,
 				int x_size,
 				int y_size,
@@ -483,24 +503,39 @@ void rrt(double* map,
 	}
 }
 
-pair<bool,vertex*> connect(vector<vertex*> tree, double* new_q, int n, double* map, int x_size, int y_size, int steps, double stepsize, double connect_thres) {
+pair<bool,vertex*> connect(vector<vertex*> &tree, double* extednded_q, int numofDOFs, double* map, int x_size, int y_size, int steps, double stepsize, double connect_thres) {
 	// define a new bool variable called connected
 	bool connected = false;
-	vertex* extended = extend(tree, new_q, n, map, x_size, y_size, steps, stepsize);
-	if (l2norm(new_q, extended->angles, n) > connect_thres) {
-		tree.push_back(extended);
+	vertex* nearest_neighbor = nearestAngle(tree, extednded_q, numofDOFs);
+	double* advanced_q = new double[numofDOFs];
+
+	//allocated memory for new vertex
+	vertex* advanced_vertex = new vertex;
+	advanced_vertex->parent = nearest_neighbor;
+	advanced_vertex->angles = new double[numofDOFs];
+
+	int i=0;
+	while (l2norm(advanced_q, extednded_q, numofDOFs) > connect_thres && IsValidArmConfiguration(advanced_q, numofDOFs, map, x_size, y_size)) {
+		i++;
+		for (int j =0; j< numofDOFs; ++j) {
+			advanced_q[j] = nearest_neighbor->angles[j] + i*stepsize * ((extednded_q[j] - nearest_neighbor->angles[j])/abs(extednded_q[j] - nearest_neighbor->angles[j]));
+		}
+    }
+	if (IsValidArmConfiguration(advanced_q, numofDOFs, map, x_size, y_size)) {
 		connected = false;
-		return make_pair(connected,extended);
+		for (int j = 0; j < numofDOFs; ++j) {
+			advanced_vertex->angles[j] = advanced_q[j];
+		}
 	}
 	else {
-		tree.push_back(extended);
-		//print that the trees are connected
-		cout<<"-------------------------trees are connected---------------------"<<endl;
 		connected = true;
-		return make_pair(connected,extended);
+		for (int j = 0; j < numofDOFs; ++j) {
+			advanced_vertex->angles[j] = advanced_q[j];
+		}
 	}
-}
+	return make_pair(connected, advanced_vertex);
 
+}
 
 static void rrtconnect(double* map,
 				int x_size,
@@ -511,7 +546,8 @@ static void rrtconnect(double* map,
 				double*** plan,
 				int* planlength,
 				int K,
-				int steps,
+				int Steps_extend,
+				int Steps_connect,
 				double stepsize){
 					//initialise two trees
 					vector<vertex*> startTree;
@@ -530,44 +566,31 @@ static void rrtconnect(double* map,
 						vertex* extended = new vertex;
 						double* sample_q = randomArray(numofDOFs);
 						if (i%2 == 0) {
-							extended = extend(startTree, sample_q, numofDOFs, map, x_size, y_size, steps, stepsize);
+							extended = extend(startTree, sample_q, numofDOFs, map, x_size, y_size, Steps_extend, stepsize);
 							startTree.push_back(extended);
-							if (connect(goalTree, extended->angles, numofDOFs, map, x_size, y_size, steps, stepsize, 1)){
-
+							pair<bool,vertex*> connected = connect(goalTree, extended->angles, numofDOFs, map, x_size, y_size, Steps_connect, stepsize, 1);
+							if (connected.first == true) {
 								// backtrack to get the path
-								pair <int, double**> path = backtrace(extended, numofDOFs);
-								*planlength = path.first;
-								*plan = path.second;
+								pair <int, double**> pathToGoal = backtrace(connected.second, numofDOFs);
+								pair <int, double**> pathToStart = backtrace(extended, numofDOFs);
+								*plan=connectpath(pathToStart, pathToGoal, numofDOFs);
 								break;
-							};
-							
-						}
-						else {
-							// cout<<"goal tree"<<endl;
-							extended = extend(goalTree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.05);
-							// cout<<"Extended vertex: ";
-							// for (int j = 0; j < numofDOFs; ++j) {
-							// 	cout << extended->angles[j] << " ";
-							// }
-							// cout << endl;
-							goalTree.push_back(extended);
-							//check if the extended vertex is in the start tree
-							for (int j = 0; j < startTree.size(); ++j) {
-								if (l2norm(extended->angles, startTree[j]->angles, numofDOFs) < 1) {
-									cout<<"-------------------------found goal---------------------"<<endl;
-									// backtrack to get the path
-									pair <int, double**> path = backtrace(extended, numofDOFs);
-									*planlength = path.first;
-									*plan = path.second;
-									break;
-								}
 							}
 						}
-						extended=extend(startTree, sample_q, numofDOFs, map, x_size, y_size, 100, 0.05);
-						
-					}
-
-				
+						else {
+							extended = extend(goalTree, sample_q, numofDOFs, map, x_size, y_size, Steps_extend,stepsize);
+							goalTree.push_back(extended);
+							pair<bool,vertex*> connected = connect(startTree, extended->angles, numofDOFs, map, x_size, y_size, Steps_connect, stepsize, 1);
+							if (connected.first == true) {
+								// backtrack to get the path
+								pair <int, double**> pathToStart = backtrace(connected.second, numofDOFs);
+								pair <int, double**> pathToGoal = backtrace(extended, numofDOFs);
+								*plan=connectpath(pathToStart, pathToGoal, numofDOFs);
+								
+								break;
+							}
+						}
+					}				
 }
 
 
