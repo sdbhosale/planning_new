@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "__locale": "cpp",
+        "iosfwd": "cpp",
+        "stdexcept": "cpp",
+        "tuple": "cpp",
+        "string": "cpp",
+        "new": "cpp",
+        "chrono": "cpp",
+        "type_traits": "cpp",
+        "regex": "cpp",
+        "vector": "cpp"
+    }
+}

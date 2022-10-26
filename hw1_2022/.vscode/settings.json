@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "functional": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "iostream": "cpp",
+        "locale": "cpp",
+        "tuple": "cpp",
+        "__hash_table": "cpp",
+        "version": "cpp"
+    }
+}
