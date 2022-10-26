@@ -536,11 +536,9 @@ pair<bool,vertex*> connect(vector<vertex*> &tree, double* extednded_q, int numof
 				return make_pair(connected, advanced_vertex);
 			}
 		}
+		advanced_vertex->angles = advanced_q;
+		tree.push_back(advanced_vertex);
 	}
-	advanced_vertex->angles = advanced_q;
-	connected = true;
-	tree.push_back(advanced_vertex);
-	return make_pair(connected, advanced_vertex);
 }
 
 static void rrtconnect(double* map,
