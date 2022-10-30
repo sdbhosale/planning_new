@@ -511,7 +511,7 @@ static void findgraph(vector<vertex*> &tree, vertex* q, int numofDOFs, double ra
 
 	for (int i = 0; i < std::min(N, (int)pq.size()); ++i) {
 		pair <double, vertex*> v = pq.top();
-		cout<<"cost: "<<v.first<<endl;
+		// cout<<"cost: "<<v.first<<endl;
 		q->neighbors.push_back(v.second);
 		v.second->neighbors.push_back(q);
 		pq.pop();
@@ -545,11 +545,12 @@ vector<bool> closed_list(roadmap.size(),false);
 
 bool goal_reached = false;
 
-open_list.push(start);
 start->cost = 0;
+open_list.push(start);
 
 while(!open_list.empty() && !goal_reached){
 	vertex* current = open_list.top();
+	cout<<"current: "<<current->angles[0]<<" "<<current->angles[1]<<" "<<current->angles[2]<<" "<<current->angles[3]<<" "<<current->angles[4]<<" "<<current->angles[5]<<" "<<current->angles[6]<<endl;
 	open_list.pop();
 	if(!closed_list[current->vertex_id]){
 		closed_list[current->vertex_id] = true;
@@ -617,8 +618,6 @@ static void prm(double* map,
 	}
 	cout<<"Roadmap final size: "<<roadmap.size()<<endl;
 
-
-
 // make a new vertex called start_vertex
 vertex* start_vertex = new vertex;
 start_vertex->cost = 0;
@@ -629,7 +628,7 @@ start_vertex->vertex_id = 0;
 findgraph(roadmap, start_vertex, numofDOFs, radius, N_neighbours, map, x_size, y_size);
 
 vertex* goal_vertex = new vertex;
-goal_vertex->cost = 0;
+goal_vertex->cost = DBL_MAX;
 goal_vertex->parent = NULL;
 goal_vertex->angles= armgoal_anglesV_rad;
 goal_vertex->vertex_id = roadmap.size()+1;
